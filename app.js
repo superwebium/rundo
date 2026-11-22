@@ -9,7 +9,7 @@ if(location.hash.startsWith('#strava_token=')){
  finally{history.replaceState(null,'',location.pathname+location.search)}
 }
 
-const state={features:[],byId:new Map(),overrides:{},filter:'all',query:'',maxDistance:999,selected:null,gpx:{},user:null,db:null,auth:null,markers:null,sortAsc:true,previews:new Map(),highlight:null,progressReady:false,profile:null,athleteIdentity:null};
+const state={features:[],byId:new Map(),overrides:{},filter:'all',query:'',maxDistance:999,selected:null,gpx:{},user:null,db:null,auth:null,markers:null,sortAsc:true,previews:new Map(),highlight:null,progressReady:false,profile:null,athleteIdentity:null,stravaLayer:null,stravaAbort:null,stravaActivitiesLoaded:false};
 const map=L.map('map',{zoomControl:false,preferCanvas:true}).setView([45.80,1.15],10);
 // Selectable map providers: never cascade failed requests automatically.
 // Attribution is always visible via Leaflet's built-in attribution control.
@@ -44,6 +44,78 @@ window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setT
 window.addEventListener('orientationchange',()=>setTimeout(()=>map.invalidateSize({pan:false}),250));
 const tracks=L.geoJSON(null,{style:f=>({color:isDone(f)?'#4b965c':'#e8794d',weight:isDone(f)?5:3,opacity:.86}),onEachFeature:(f,layer)=>layer.on('click',()=>showRoute(f.properties.id))}).addTo(map);
 let boundary;
+// Optional Strava GPS activity overlay, OFF by default and visible only to its owner.
+const STRAVA_ACTIVITIES='https://rundo-auth.superwebium.workers.dev/api/activities';
+const activityLayer=L.layerGroup();
+function decodePolyline(encoded){
+ let index=0,lat=0,lng=0,points=[];
+ while(index<encoded.length){
+  let result=0,shift=0,b;
+  do{if(index>=encoded.length)return points;b=encoded.charCodeAt(index++)-63;result|=(b&31)<<shift;shift+=5}while(b>=32);
+  lat+=(result&1)?~(result>>1):(result>>1);
+  result=0;shift=0;
+  do{if(index>=encoded.length)return points;b=encoded.charCodeAt(index++)-63;result|=(b&31)<<shift;shift+=5}while(b>=32);
+  lng+=(result&1)?~(result>>1):(result>>1);
+  points.push([lat/1e5,lng/1e5]);
+ }
+ return points;
+}
+function clearStravaActivities(){
+ state.stravaAbort?.abort();state.stravaAbort=null;
+ activityLayer.clearLayers();activityLayer.remove();state.stravaActivitiesLoaded=false;
+ $('strava-layer').classList.remove('active');$('strava-layer').setAttribute('aria-pressed','false');
+ $('strava-layer').textContent='Activités Strava';
+}
+async function toggleStravaActivities(){
+ const b=$('strava-layer');
+ if(map.hasLayer(activityLayer)){clearStravaActivities();return}
+ if(!state.user?.uid.startsWith('strava-')){toast('Connecte-toi avec Strava pour afficher tes activités.');return}
+ activityLayer.addTo(map);
+ b.classList.add('active');b.setAttribute('aria-pressed','true');
+ if(state.stravaActivitiesLoaded)return;
+ const controller=new AbortController();state.stravaAbort=controller;
+ let count=0,withoutGPS=0,hasMore=true;
+ try{
+  const firebaseToken=await state.auth.currentUser.getIdToken();
+  for(let page=1;hasMore&&page<=30;page++){
+   if(controller.signal.aborted)return;
+   b.textContent='Activités Strava · chargement…';
+   const res=await fetch(STRAVA_ACTIVITIES+'?page='+page,{
+    headers:{Authorization:'Bearer '+firebaseToken},signal:controller.signal,cache:'no-store'
+   });
+   const data=await res.json();
+   if(!res.ok)throw new Error(data.error||('HTTP '+res.status));
+   for(const a of data.activities||[]){
+    if(!a.polyline){withoutGPS++;continue}
+    const pts=decodePolyline(a.polyline);
+    if(pts.length<2){withoutGPS++;continue}
+    const color='#8458d8';
+    const line=L.polyline(pts,{color,weight:3,opacity:.67,interactive:true});
+    const name=String(a.name||'Activité Strava');
+    const date=a.date?new Date(a.date).toLocaleDateString('fr-FR'):'Date inconnue';
+    const km=(Number(a.distance||0)/1000).toFixed(1).replace('.',',');
+    const popup=document.createElement('div');
+    const heading=document.createElement('strong');heading.textContent=name;
+    const desc=document.createElement('p');desc.textContent=date+' · '+km+' km · '+(a.sportType||'');
+    const link=document.createElement('a');link.href='https://www.strava.com/activities/'+encodeURIComponent(a.id);
+    link.target='_blank';link.rel='noopener noreferrer';link.textContent='Voir sur Strava';
+    popup.append(heading,desc,link);line.bindPopup(popup);
+    activityLayer.addLayer(line);count++;
+   }
+   hasMore=data.hasMore===true;
+   b.textContent='Activités Strava · '+count;
+   await new Promise(resolve=>requestAnimationFrame(resolve));
+  }
+  if(controller.signal.aborted)return;
+  state.stravaActivitiesLoaded=true;
+  toast(count+' activités GPS affichées depuis le 08/05/2025'+(withoutGPS?' ('+withoutGPS+' sans trace)':'')+(hasMore?' — limite de pagination atteinte':''));
+ }catch(e){
+  if(e.name==='AbortError')return;
+  clearStravaActivities();
+  toast('Activités Strava : '+e.message);
+ }finally{if(state.stravaAbort===controller)state.stravaAbort=null}
+}
+$('strava-layer').addEventListener('click',toggleStravaActivities);
 // Use an inexpensive overview geometry for hundreds of trails, retaining full GPS
 // accuracy in state.features for the selected trail only.
 const previewFeature=f=>{
@@ -167,6 +239,7 @@ $('strava-login').onclick=()=>{
   auth.onAuthStateChanged(state.auth,async user=>{
    const version=++authVersion;
    if(unsubscribe){unsubscribe();unsubscribe=null}
+   if(!user || (state.user&&state.user.uid!==user?.uid))clearStravaActivities();
    state.user=user;state.overrides={};state.progressReady=false;state.athleteIdentity=null;
    updateIdentity(user);refresh(true);
    if(!user){$('profile-dialog').hidden=true;return}
