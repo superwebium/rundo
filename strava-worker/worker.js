@@ -32,7 +32,12 @@ async function customToken(serviceAccount,athlete){
    iss:serviceAccount.client_email,
    sub:serviceAccount.client_email,
    aud:'https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit',
-   iat:now, exp:now+3600, uid
+   iat:now, exp:now+3600, uid,
+   claims: {
+     stravaName: [athlete.firstname, athlete.lastname].filter(Boolean).join(' ').slice(0,100) || 'Coureur Strava',
+     stravaPhoto: (athlete.profile_medium || athlete.profile || '').slice(0,1000),
+     stravaAthleteId: String(athlete.id)
+   }
  }));
  const input=header+'.'+payload;
  const signature=new Uint8Array(await crypto.subtle.sign('RSASSA-PKCS1-v1_5',key,utf8.encode(input)));
