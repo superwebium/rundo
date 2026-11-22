@@ -7,7 +7,7 @@ const SITE = 'https://superwebium.github.io/rundo/';
 const CALLBACK = 'https://rundo-auth.superwebium.workers.dev/callback';
 const COOKIE = '__Host-rundo_oauth_state';
 const ORIGIN = 'https://superwebium.github.io';
-const AFTER = Math.floor(Date.parse('2025-05-08T00:00:00Z')/1000);
+const AFTER = Math.floor(Date.parse('2025-05-07T22:00:00Z')/1000);
 const PAGE_SIZE = 200;
 const corsHeaders={'Access-Control-Allow-Origin':ORIGIN,'Access-Control-Allow-Methods':'GET,OPTIONS','Access-Control-Allow-Headers':'Authorization','Vary':'Origin','Cache-Control':'private, no-store'};
 function apiError(message,status=400){return new Response(JSON.stringify({error:message}),{status,headers:{...corsHeaders,'Content-Type':'application/json; charset=utf-8'}})}
@@ -115,7 +115,7 @@ export default {
    target.searchParams.set('client_id',String(env.STRAVA_CLIENT_ID));
    target.searchParams.set('response_type','code');
    target.searchParams.set('redirect_uri',CALLBACK);
-   target.searchParams.set('approval_prompt','force');
+   target.searchParams.set('approval_prompt','auto');
    target.searchParams.set('scope','read,activity:read_all');
    target.searchParams.set('state',state);
    return new Response(null,{status:302,headers:{...baseHeaders,'Location':target.toString(),'Set-Cookie':`${COOKIE}=${state}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`}});
