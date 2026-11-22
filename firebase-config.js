@@ -10,4 +10,7 @@ export const firebaseConfig = {
   messagingSenderId: "246888225114",
   appId: "1:246888225114:web:515a94229043d7ac437b63",
   measurementId: "G-FFF29TXZ0W"
+  // Pour importer les anciens PR UNIQUEMENT dans ton compte Strava :
+  // ajouter une virgule après measurementId et : legacyOwnerUid: "strava-XXXX"
+  // où XXXX est ton ID Strava réel (voir Firebase Authentication > Utilisateurs).
 };
