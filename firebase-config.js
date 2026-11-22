@@ -1,3 +1,3 @@
-// Remplacer null par la configuration publique de votre application Web Firebase.
-// Ne jamais placer une clé de compte de service ici.
+// Replace this file with the Web app configuration from Firebase Console.
+// It contains public Firebase project identifiers, not secret credentials.
 export const firebaseConfig = null;
