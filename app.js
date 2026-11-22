@@ -2,17 +2,29 @@ import {firebaseConfig} from './firebase-config.js';
 const $=id=>document.getElementById(id);
 const state={features:[],byId:new Map(),overrides:{},filter:'all',query:'',maxDistance:999,selected:null,gpx:{},user:null,db:null,auth:null,markers:null,sortAsc:true};
 const map=L.map('map',{zoomControl:false,preferCanvas:true}).setView([45.80,1.15],10);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors',maxZoom:19}).addTo(map);
+// Use the official OSM raster endpoint (single hostname); fall back if tile errors occur.
+const baseLayer=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom:19,updateWhenIdle:true,keepBuffer:2
+}).addTo(map);
+let tileErrors=0, fallbackEnabled=false;
+baseLayer.on('tileload',()=>{tileErrors=0});
+baseLayer.on('tileerror',()=>{
+  if(fallbackEnabled||++tileErrors<3)return;
+  fallbackEnabled=true;
+  console.warn('RUNdo: OSM tile errors; switching to backup topographic basemap');
+  map.removeLayer(baseLayer);
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',{
+    attribution:'Tiles &copy; Esri and its data providers',maxZoom:18,updateWhenIdle:true,keepBuffer:2
+  }).addTo(map).bringToBack();
+  toast('Fond cartographique de secours activé');
+});
 L.control.zoom({position:'bottomright'}).addTo(map);
-// Leaflet can initialise before the responsive map container reaches its final size.
-// Recalculate its viewport whenever the container changes dimensions.
-const mapContainer=document.getElementById('map');
-const recalcMapSize=()=>map.invalidateSize({pan:false,debounceMoveend:true});
-if('ResizeObserver' in window){new ResizeObserver(recalcMapSize).observe(mapContainer)}
-window.addEventListener('resize',recalcMapSize,{passive:true});
-window.addEventListener('orientationchange',()=>requestAnimationFrame(recalcMapSize));
-window.addEventListener('pageshow',()=>requestAnimationFrame(recalcMapSize));
-
+// Only invalidate after the responsive layout has settled. Avoid a ResizeObserver
+// feedback loop and unnecessary tile cancellation during initial loading.
+let resizeTimer;
+window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>map.invalidateSize({pan:false}),180)},{passive:true});
+window.addEventListener('orientationchange',()=>setTimeout(()=>map.invalidateSize({pan:false}),250));
 const tracks=L.geoJSON(null,{style:f=>({color:isDone(f)?'#4b965c':'#e8794d',weight:isDone(f)?5:3,opacity:.86}),onEachFeature:(f,layer)=>layer.on('click',()=>showRoute(f.properties.id))}).addTo(map);
 let boundary;
 const isDone=f=>state.overrides[f.properties.id]??f.properties.initialDone;
@@ -30,5 +42,5 @@ $('query').oninput=e=>{state.query=e.target.value.toLocaleLowerCase('fr').trim()
 $('locate').onclick=()=>{if(!navigator.geolocation){toast('Géolocalisation indisponible');return}navigator.geolocation.getCurrentPosition(p=>{const latlng=[p.coords.latitude,p.coords.longitude];L.circleMarker(latlng,{radius:8,color:'#fff',weight:3,fillColor:'#2878d8',fillOpacity:1}).addTo(map).bindPopup('Ma position').openPopup();map.setView(latlng,13)},e=>toast('Position non accessible : '+e.message),{enableHighAccuracy:true,timeout:12000})};
 $('water').onchange=async e=>{if(e.target.checked){if(!state.markers){const d=await fetch('./data/water.geojson').then(r=>r.json());state.markers=L.geoJSON(d,{pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:4,color:'#fff',weight:1,fillColor:'#1687d1',fillOpacity:.95}),onEachFeature:(f,l)=>l.bindPopup('Eau potable · '+(f.properties.commune||''))})}state.markers.addTo(map)}else state.markers?.remove()};
 async function initFirebase(){if(!firebaseConfig?.apiKey){$('login').textContent='Cloud à configurer';$('login').onclick=()=>toast('Configurer firebase-config.js et Firestore selon README.md');return}try{const [app,auth,db]=await Promise.all([import('https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js'),import('https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js'),import('https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js')]);const firebaseApp=app.initializeApp(firebaseConfig);state.auth=auth.getAuth(firebaseApp);state.db=db.getFirestore(firebaseApp);state.firebase=db;try{await db.enableIndexedDbPersistence(state.db)}catch(e){console.info('Cache Firestore non disponible',e.code)}$('login').onclick=()=>auth.signInWithPopup(state.auth,new auth.GoogleAuthProvider()).catch(e=>toast('Connexion impossible : '+e.message));$('logout').onclick=()=>auth.signOut(state.auth);let unsubscribe=null;auth.onAuthStateChanged(state.auth,user=>{if(unsubscribe){unsubscribe();unsubscribe=null}state.user=user;$('login').hidden=!!user;$('logout').hidden=!user;if(!user){state.overrides={};refresh();return}toast('Connecté : '+(user.email||'compte Google'));unsubscribe=db.onSnapshot(db.collection(state.db,'users',user.uid,'progress'),snap=>{const next={};snap.forEach(d=>{if(typeof d.data().done==='boolean')next[d.id]=d.data().done});state.overrides=next;refresh();if(state.selected)showRoute(state.selected)},e=>toast('Lecture progression impossible : '+e.message))})}catch(e){toast('Configuration Firebase invalide : '+e.message)}}
-async function init(){try{const [r,b,g]=await Promise.all([fetch('./data/routes.geojson').then(r=>r.json()),fetch('./data/boundary.geojson').then(r=>r.json()),fetch('./data/gpx-status.json').then(r=>r.json()).catch(()=>({items:{}}))]);state.features=r.features;state.byId=new Map(r.features.map(f=>[f.properties.id,f]));state.gpx=g.items||{};boundary=L.geoJSON(b,{style:{color:'#43584a',weight:2,fill:false,dashArray:'6 6'}}).addTo(map);map.fitBounds(boundary.getBounds());requestAnimationFrame(()=>{recalcMapSize();map.fitBounds(boundary.getBounds(),{animate:false});});refresh();await initFirebase();}catch(e){toast('Chargement des parcours impossible : '+e.message);console.error(e)}}
+async function init(){try{const [r,b,g]=await Promise.all([fetch('./data/routes.geojson').then(r=>r.json()),fetch('./data/boundary.geojson').then(r=>r.json()),fetch('./data/gpx-status.json').then(r=>r.json()).catch(()=>({items:{}}))]);state.features=r.features;state.byId=new Map(r.features.map(f=>[f.properties.id,f]));state.gpx=g.items||{};boundary=L.geoJSON(b,{style:{color:'#43584a',weight:2,fill:false,dashArray:'6 6'}}).addTo(map);map.fitBounds(boundary.getBounds(),{animate:false});refresh();setTimeout(()=>map.invalidateSize({pan:false}),250);await initFirebase();}catch(e){toast('Chargement des parcours impossible : '+e.message);console.error(e)}}
 init();if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(console.warn);
