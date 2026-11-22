@@ -87,3 +87,21 @@
  #more-routes:not([hidden]){display:block;flex:none;align-self:stretch;background:#24423c;color:#d1ef85;border:1px solid #4b7163;border-radius:11px;margin:6px 12px 12px;padding:11px;min-height:42px;font-size:12px;font-weight:750}
 }
 @media (max-width:800px) and (prefers-reduced-motion:reduce){.sidebar{transition:none}}
+
+
+/* RUNdo filters V2.2: three numeric criteria and an opt-in location. */
+.filters2{flex-wrap:wrap;justify-content:flex-start;align-items:end}
+.filters2>label:not(.check){display:flex;flex-direction:column;gap:5px;min-width:105px;flex:1}
+.filters2 select{min-height:39px;max-width:100%;font-size:12px}
+#filter-gps,#reset-advanced{border:1px solid #4c6760;background:#24443f;color:#e5f2e8;border-radius:9px;min-height:39px;padding:7px 10px;font-size:12px}
+#filter-gps:disabled{opacity:.55}
+#gps-filter-status{width:100%;font-size:11px;color:#acc6b9}
+#reset-advanced{color:#d1ef85}
+@media(max-width:800px){
+ .sidebar.advanced-open .filters2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ .filters2>label:not(.check){min-width:0}
+ .filters2 select{width:100%}
+ #gps-filter-status{grid-column:1 / -1}
+ #reset-advanced{grid-column:1 / -1}
+ .filters2 .check{align-self:center}
+}
