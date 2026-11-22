@@ -120,12 +120,19 @@ async function initFirebase(){
   state.auth=auth.getAuth(firebaseApp);state.db=db.getFirestore(firebaseApp);state.firebase=db;
   try{await db.enableIndexedDbPersistence(state.db)}catch(e){console.info('Cache Firestore non disponible',e.code)}
   $('login').onclick=()=>auth.signInWithPopup(state.auth,new auth.GoogleAuthProvider()).catch(e=>toast('Connexion impossible : '+e.message));
-  // Enable the Strava button only once the Worker is deployed and configured.
-// Temporarily disabled in this commit; set STRAVA_ENABLED to true after /start is verified.
-const STRAVA_ENABLED=false;
+  // Beta sign-in: keep Google available until existing profiles can be linked/migrated.
+// A separate Strava UID is created; never silently replace an active Google session.
+const STRAVA_ENABLED=true;
 $('strava-login').disabled=!STRAVA_ENABLED;
-$('strava-login').textContent=STRAVA_ENABLED?'Se connecter avec Strava':'Strava bientôt';
-$('strava-login').onclick=()=>{if(STRAVA_ENABLED)window.location.assign(STRAVA_START)};
+$('strava-login').textContent='Connexion Strava (test)';
+$('strava-login').onclick=()=>{
+ if(!STRAVA_ENABLED)return;
+ if(state.user&&!state.user.uid.startsWith('strava-')){
+  const ok=confirm('La connexion Strava crée actuellement un profil distinct de ton compte Google. Ta progression Google sera conservée mais ne sera pas affichée dans le profil Strava. Continuer le test ?');
+  if(!ok)return;
+ }
+ window.location.assign(STRAVA_START);
+};
   if(incomingStravaToken){
    const token=incomingStravaToken;incomingStravaToken=null;
    try{await auth.signInWithCustomToken(state.auth,token);toast('Connexion Strava réussie')}
