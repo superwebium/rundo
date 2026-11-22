@@ -1,20 +1,39 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // IMPORTANT: change the email below to your actual Google login email.
-    function isOwner(userId) {
-      return request.auth != null
-        && request.auth.uid == userId
-        && request.auth.token.email == 'REPLACE_WITH_YOUR_GOOGLE_EMAIL';
+    function own(uid) {
+      return request.auth != null && request.auth.uid == uid;
     }
-    match /users/{userId}/progress/{routeId} {
-      allow read: if isOwner(userId);
-      allow create, update: if isOwner(userId)
-        && request.resource.data.keys().hasOnly(['done','updatedAt'])
-        && request.resource.data.done is bool
+    function profileValid() {
+      return request.resource.data.keys().hasOnly(['displayName','photoURL','updatedAt'])
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 100
+        && request.resource.data.photoURL is string
+        && request.resource.data.photoURL.size() <= 1000
         && request.resource.data.updatedAt == request.time;
-      allow delete: if false;
     }
-    match /{document=**} { allow read, write: if false; }
+    match /users/{uid} {
+      allow get: if own(uid);
+      allow list: if false;
+      allow create, update: if own(uid) && profileValid();
+      allow delete: if false;
+
+      match /progress/{routeId} {
+        allow read: if own(uid);
+        allow create, update: if own(uid)
+          && request.resource.data.keys().hasOnly(['done','updatedAt'])
+          && request.resource.data.done is bool
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if false;
+      }
+
+      // Future Strava tokens must NEVER be written/read by browser clients.
+      match /stravaPrivate/{docId} {
+        allow read, write: if false;
+      }
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
   }
 }
