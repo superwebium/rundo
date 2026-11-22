@@ -9,7 +9,7 @@ if(location.hash.startsWith('#strava_token=')){
  finally{history.replaceState(null,'',location.pathname+location.search)}
 }
 
-const state={features:[],byId:new Map(),overrides:{},filter:'all',query:'',maxDistance:999,selected:null,gpx:{},user:null,db:null,auth:null,markers:null,sortAsc:true,previews:new Map(),highlight:null,progressReady:false,profile:null};
+const state={features:[],byId:new Map(),overrides:{},filter:'all',query:'',maxDistance:999,selected:null,gpx:{},user:null,db:null,auth:null,markers:null,sortAsc:true,previews:new Map(),highlight:null,progressReady:false,profile:null,athleteIdentity:null};
 const map=L.map('map',{zoomControl:false,preferCanvas:true}).setView([45.80,1.15],10);
 // Selectable map providers: never cascade failed requests automatically.
 // Attribution is always visible via Leaflet's built-in attribution control.
@@ -81,7 +81,7 @@ $('water').onchange=async e=>{if(e.target.checked){if(!state.markers){const d=aw
 // No personal data is derived from the public uMap initialDone flag.
 async function importLegacyProgress(){
  if(!state.user||!state.db||!state.progressReady)return;
- if(!firebaseConfig?.legacyOwnerEmail||state.user.email?.toLowerCase()!==firebaseConfig.legacyOwnerEmail.toLowerCase())return;
+ if(!isLegacyOwner())return;
  const candidates=state.features.filter(f=>f.properties.initialDone&&!isDone(f));
  if(!candidates.length){toast('Les parcours historiques sont déjà importés.');return}
  if(!confirm('Importer '+candidates.length+' PR terminés depuis l’ancien uMap vers ton profil RUNdo ?'))return;
@@ -98,11 +98,34 @@ async function importLegacyProgress(){
  }catch(e){toast('Import impossible : '+e.message)}finally{btn.disabled=false}
 }
 $('import-legacy').addEventListener('click',importLegacyProgress);
+function isLegacyOwner(){
+ return !!(state.user?.uid && firebaseConfig?.legacyOwnerUid && state.user.uid===firebaseConfig.legacyOwnerUid);
+}
+function profileInfo(user){
+ if(!user)return {name:'',photo:''};
+ return {name:state.athleteIdentity?.name||user.displayName||user.email||(user.uid.startsWith('strava-')?'Coureur Strava':'Mon profil'),
+ photo:state.athleteIdentity?.photo||user.photoURL||''};
+}
+function showProfile(){
+ if(!state.user)return;
+ const p=profileInfo(state.user);
+ const popup=$('profile-dialog');
+ $('profile-name').textContent=p.name;
+ $('profile-type').textContent=state.user.uid.startsWith('strava-')?'Compte Strava':'Compte Google';
+ $('profile-photo').hidden=!p.photo;
+ if(p.photo)$('profile-photo').src=p.photo;
+ $('profile-stats').textContent=state.features.filter(isDone).length+' PR terminés sur '+state.features.length;
+ popup.hidden=false;
+}
+$('profile').addEventListener('click',showProfile);
+$('profile-close').addEventListener('click',()=>{$('profile-dialog').hidden=true});
 function updateIdentity(user){
- $('login').hidden=!!user;$('logout').hidden=!user;
- $('identity').textContent=user?(user.displayName||user.email||'Mon profil'):'Mode découverte · connecte-toi pour participer';
+ $('login').hidden=!!user;$('strava-login').hidden=!!user;$('logout').hidden=!user;
+ const info=profileInfo(user);
+ $('identity').textContent=user?info.name:'Mode découverte · connecte-toi pour participer';
  $('profile').hidden=!user;
- $('import-legacy').hidden=!(user&&firebaseConfig?.legacyOwnerEmail&&user.email?.toLowerCase()===firebaseConfig.legacyOwnerEmail.toLowerCase());
+ $('profile').disabled=!user;
+ $('import-legacy').hidden=!isLegacyOwner();
 }
 async function initFirebase(){
  if(!firebaseConfig?.apiKey){
@@ -144,13 +167,23 @@ $('strava-login').onclick=()=>{
   auth.onAuthStateChanged(state.auth,async user=>{
    const version=++authVersion;
    if(unsubscribe){unsubscribe();unsubscribe=null}
-   state.user=user;state.overrides={};state.progressReady=false;
+   state.user=user;state.overrides={};state.progressReady=false;state.athleteIdentity=null;
    updateIdentity(user);refresh(true);
-   if(!user)return;
+   if(!user){$('profile-dialog').hidden=true;return}
+   if(user.uid.startsWith('strava-')){
+    try{
+     const tokenDetails=await user.getIdTokenResult();
+     if(version!==authVersion)return;
+     const claims=tokenDetails.claims;
+     state.athleteIdentity={name:typeof claims.stravaName==='string'?claims.stravaName:'Coureur Strava',
+       photo:typeof claims.stravaPhoto==='string'?claims.stravaPhoto:''};
+     updateIdentity(user);
+    }catch(e){console.warn('Profil Strava indisponible',e)}
+   }
    try{
     await db.setDoc(db.doc(state.db,'users',user.uid),{
-     displayName:(user.displayName||'Coureur').slice(0,100),
-     photoURL:(user.photoURL||'').slice(0,1000),
+     displayName:profileInfo(user).name.slice(0,100),
+     photoURL:profileInfo(user).photo.slice(0,1000),
      updatedAt:db.serverTimestamp()
     },{merge:true});
    }catch(e){console.warn('Profil inaccessible',e);toast('Profil non sauvegardé : vérifie les règles Firestore')}
