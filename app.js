@@ -49,6 +49,8 @@ let boundary;
 // Mobile app: the map stays fullscreen; parcours and account use independent sheets.
 const isMobile=()=>window.matchMedia('(max-width:800px)').matches;
 let drawerOpen=false;
+let mobileRouteLimit=40;
+const PAGE_ROUTES=40;
 function invalidateMobileMap(){requestAnimationFrame(()=>setTimeout(()=>map.invalidateSize({pan:false}),80))}
 function closeMobilePanels(){
  if(!isMobile())return;
@@ -64,13 +66,20 @@ function openMobileList(){
  if(!isMobile())return;
  $('sheet').hidden=true;$('profile-dialog').hidden=true;$('mobile-auth-dialog').hidden=true;
  drawerOpen=true;
- $('mobile-drawer').classList.add('mobile-open');$('mobile-backdrop').hidden=false;
+ $('mobile-drawer').classList.add('mobile-open');$('mobile-backdrop').hidden=true;
+ $('routes').scrollTop=0;
  $('mobile-map').classList.remove('active');$('mobile-list').classList.add('active');
  $('mobile-map').removeAttribute('aria-current');$('mobile-list').setAttribute('aria-current','page');
 }
 $('mobile-list').onclick=()=>drawerOpen?closeMobilePanels():openMobileList();
 $('mobile-map').onclick=()=>{closeMobilePanels();$('profile-dialog').hidden=true;$('sheet').hidden=true};
 $('mobile-close-list').onclick=closeMobilePanels;
+$('mobile-advanced').onclick=()=>{
+ const expanded=$('mobile-advanced').getAttribute('aria-expanded')==='true';
+ $('mobile-advanced').setAttribute('aria-expanded',String(!expanded));
+ $('mobile-drawer').classList.toggle('advanced-open',!expanded);
+};
+$('more-routes').onclick=()=>{mobileRouteLimit+=PAGE_ROUTES;refresh()};
 $('mobile-backdrop').onclick=closeMobilePanels;
 $('mobile-profile').onclick=()=>{
  closeMobilePanels();$('sheet').hidden=true;
@@ -189,12 +198,15 @@ function toast(s){$('toast').textContent=s;$('toast').classList.add('show');clea
 function visible(f){const p=f.properties,st=state.gpx[p.id]?.status;return (!state.query||p.name.toLocaleLowerCase('fr').includes(state.query)) && (p.distance==null||p.distance<=state.maxDistance) && (state.filter==='all'||state.filter==='done'&&isDone(f)||state.filter==='todo'&&!isDone(f)||state.filter==='gpxbad'&&st==='unavailable');}
 function refresh(redrawMap=false){const total=state.features.length,done=state.features.filter(isDone),km=done.reduce((s,f)=>s+(f.properties.distance||0),0);$('done-count').textContent=done.length;$('done-total').textContent=`/ ${total} parcours`;$('done-percent').textContent=`${total?(done.length/total*100).toFixed(1).replace('.',','):'0'} % des PR terminés`;$('progress-fill').style.width=`${done.length/total*100}%`;$('done-km').textContent=`${formatNum(km)} km`;$('remaining').textContent=total-done.length;$('mobile-summary').textContent=done.length+' / '+total+' PR terminés';
  const filtered=state.features.filter(visible).sort((a,b)=>state.sortAsc?(a.properties.distance??999)-(b.properties.distance??999):(b.properties.distance??0)-(a.properties.distance??0));$('results').textContent=`${filtered.length} parcours`;
- const list=$('routes');list.replaceChildren();for(const f of filtered.slice(0,350)){const p=f.properties,btn=document.createElement('button');btn.className='route'+(state.selected===p.id?' selected':'');const dot=document.createElement('span');dot.className='dot'+(isDone(f)?' done':'');const content=document.createElement('div');const name=document.createElement('div');name.className='name';name.textContent=p.name;const sub=document.createElement('div');sub.className='sub';sub.textContent=`${formatNum(p.distance)} km · D+ ${formatNum(p.ascent)} m${state.gpx[p.id]?.status==='unavailable'?' · ⚠ GPX':''}`;content.append(name,sub);const arrow=document.createElement('span');arrow.className='arrow';arrow.textContent='›';btn.append(dot,content,arrow);btn.addEventListener('click',()=>{if(isMobile())closeMobilePanels();showRoute(p.id)});list.append(btn)}
+ const list=$('routes');const oldScroll=list.scrollTop;list.replaceChildren();const shown=isMobile()?filtered.slice(0,mobileRouteLimit):filtered.slice(0,350);for(const f of shown){const p=f.properties,btn=document.createElement('button');btn.className='route'+(state.selected===p.id?' selected':'');const dot=document.createElement('span');dot.className='dot'+(isDone(f)?' done':'');const content=document.createElement('div');const name=document.createElement('div');name.className='name';name.textContent=p.name;const sub=document.createElement('div');sub.className='sub';sub.textContent=`${formatNum(p.distance)} km · D+ ${formatNum(p.ascent)} m${state.gpx[p.id]?.status==='unavailable'?' · ⚠ GPX':''}`;content.append(name,sub);const arrow=document.createElement('span');arrow.className='arrow';arrow.textContent='›';btn.append(dot,content,arrow);btn.addEventListener('click',()=>{if(isMobile())closeMobilePanels();showRoute(p.id)});list.append(btn)}
+ list.scrollTop=oldScroll;
+ const more=$('more-routes');more.hidden=!isMobile()||shown.length>=filtered.length;
+ more.textContent='Afficher 40 parcours de plus ('+shown.length+' / '+filtered.length+')';
  if(redrawMap){tracks.clearLayers();tracks.addData({type:'FeatureCollection',features:filtered.map(f=>state.previews.get(f.properties.id))});}}
 function showRoute(id){const f=state.byId.get(id);if(!f)return;state.selected=id;const p=f.properties;$('detail-name').textContent=p.name;$('detail-distance').textContent=`${formatNum(p.distance)} km`;$('detail-ascent').textContent=`${formatNum(p.ascent)} m`;const gp=state.gpx[id];$('detail-status').textContent=gp?.status==='available'?'✓ Fichier GPX vérifié disponible':gp?.status==='unavailable'?'⚠ Fichier GPX indisponible lors du dernier contrôle':gp?.status==='unknown'?'? Vérification GPX non concluante':'GPX non encore vérifié';$('toggle-done').textContent=isDone(f)?'✓ Terminé · annuler':'✓ Marquer comme terminé';const link=$('gpx');link.hidden=!p.gpx;if(p.gpx)link.href=p.gpx;$('sync-hint').textContent=state.user?'Connecté · changements synchronisés avec Firestore.':'Mode consultation · connecte-toi pour enregistrer tes progrès en ligne.';$('sheet').hidden=false;highlightRoute(f);if(state.highlight){if(isMobile())invalidateMobileMap();map.fitBounds(state.highlight.getBounds(),{padding:isMobile()?[65,50]:[35,35],maxZoom:14})}refresh();}
 $('close').onclick=()=>{$('sheet').hidden=true;state.selected=null;highlightRoute(null);refresh()};
 $('toggle-done').onclick=async()=>{const id=state.selected,f=state.byId.get(id);if(!f)return;if(!state.user||!state.db){toast('Connecte-toi pour sauvegarder tes parcours dans le cloud.');return}if(!state.progressReady){toast('Chargement de ta progression en cours…');return}const previous=state.overrides[id];const next=!isDone(f);state.overrides[id]=next;refresh(true);showRoute(id);try{await state.firebase.setDoc(state.firebase.doc(state.db,'users',state.user.uid,'progress',id),{done:next,updatedAt:state.firebase.serverTimestamp()});toast('Progression enregistrée ✓')}catch(e){if(previous===undefined)delete state.overrides[id];else state.overrides[id]=previous;refresh(true);showRoute(id);toast('Échec de sauvegarde : '+e.message)}};
-$('query').oninput=e=>{state.query=e.target.value.toLocaleLowerCase('fr').trim();refresh(true)};$('distance').onchange=e=>{state.maxDistance=+e.target.value;refresh(true)};$('filters').addEventListener('click',e=>{const b=e.target.closest('button[data-filter]');if(!b)return;state.filter=b.dataset.filter;for(const el of $('filters').children)el.classList.toggle('active',el===b);refresh(true)});$('sort').onclick=()=>{state.sortAsc=!state.sortAsc;$('sort').textContent=state.sortAsc?'Distance ↑':'Distance ↓';refresh()};$('fit').onclick=()=>{if(boundary)map.fitBounds(boundary.getBounds());else map.setView([45.8,1.15],10)};
+$('query').oninput=e=>{mobileRouteLimit=PAGE_ROUTES;$('routes').scrollTop=0;state.query=e.target.value.toLocaleLowerCase('fr').trim();refresh(true)};$('distance').onchange=e=>{mobileRouteLimit=PAGE_ROUTES;$('routes').scrollTop=0;state.maxDistance=+e.target.value;refresh(true)};$('filters').addEventListener('click',e=>{const b=e.target.closest('button[data-filter]');if(!b)return;mobileRouteLimit=PAGE_ROUTES;$('routes').scrollTop=0;state.filter=b.dataset.filter;for(const el of $('filters').children)el.classList.toggle('active',el===b);refresh(true)});$('sort').onclick=()=>{mobileRouteLimit=PAGE_ROUTES;$('routes').scrollTop=0;state.sortAsc=!state.sortAsc;$('sort').textContent=state.sortAsc?'Distance ↑':'Distance ↓';refresh()};$('fit').onclick=()=>{if(boundary)map.fitBounds(boundary.getBounds());else map.setView([45.8,1.15],10)};
 $('locate').onclick=()=>{if(!navigator.geolocation){toast('Géolocalisation indisponible');return}navigator.geolocation.getCurrentPosition(p=>{const latlng=[p.coords.latitude,p.coords.longitude];L.circleMarker(latlng,{radius:8,color:'#fff',weight:3,fillColor:'#2878d8',fillOpacity:1}).addTo(map).bindPopup('Ma position').openPopup();map.setView(latlng,13)},e=>toast('Position non accessible : '+e.message),{enableHighAccuracy:true,timeout:12000})};
 $('water').onchange=async e=>{if(e.target.checked){if(!state.markers){const d=await fetch('./data/water.geojson').then(r=>r.json());state.markers=L.geoJSON(d,{pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:4,color:'#fff',weight:1,fillColor:'#1687d1',fillOpacity:.95}),onEachFeature:(f,l)=>l.bindPopup('Eau potable · '+(f.properties.commune||''))})}state.markers.addTo(map)}else state.markers?.remove()};
 // Each account owns its own Firestore profile and progress documents.
