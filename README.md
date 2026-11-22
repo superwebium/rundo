@@ -1,48 +1,40 @@
-# RUNdo — Tous les PR de Haute-Vienne
+# RUNdo — Challenge des PR de Haute-Vienne
 
-PWA mobile, sans serveur personnel : **GitHub Pages (front-end) + Firebase Authentication / Firestore (progression) + GitHub Actions (contrôle périodique des liens GPX)**.
+Application cartographique PWA avec **profils individuels**.
 
-## Contenu migré
+## Architecture
+- GitHub Pages : carte et interface sans backend permanent.
+- Firebase Authentication (Google) : compte personnel.
+- Cloud Firestore : données isolées sous `users/<uid>` et `users/<uid>/progress/<routeId>`.
+- GitHub Actions : vérification des liens GPX.
+- Strava (à venir) : liaison OAuth sécurisée et comparaison des activités, via fonction serverless. **Aucun jeton Strava dans le navigateur ou GitHub Pages**.
 
-- 343 PR identifiés, avec leurs tracés d'origine, distances, dénivelés, IDs et liens GPX ; 69 sont initialement marqués `Terminé=ok` dans le backup uMap.
-- 205 points d'eau (affichage optionnel) et limite du département.
-- Les deux points isolés présents dans la couche des chemins ne sont pas traités comme des PR.
-- L'état initial n'est **pas** copié en base : chaque parcours utilise `initialDone` tant qu'aucune modification n'est enregistrée pour lui. Les changements s'enregistrent dans `users/<uid>/progress/<route_id>` et sont synchronisés entre appareils.
+## Données
+Les 343 PR, 205 points d’eau et limites du département sont publics et partagés.
+Les 69 PR terminés de l'ancien uMap sont une donnée **historique personnelle**, non une progression commune : un nouvel utilisateur démarre à **0/343**.
+Une fois Firebase configuré, le propriétaire peut importer volontairement ses anciens PR à l'aide du bouton dédié. Pour afficher ce bouton, renseigner `legacyOwnerEmail` dans `firebase-config.js`, correspondant à **l'adresse du compte Google utilisé pour se connecter à RUNdo**. Pour les autres comptes, le bouton n'est pas visible.
 
-## Mise en ligne
+## Activer les comptes
+1. Dans [Firebase Console](https://console.firebase.google.com), créer un projet et enregistrer une application Web.
+2. Activer Authentication > Sign-in method > Google.
+3. Ajouter `superwebium.github.io` dans Authentication > Settings > Authorized domains.
+4. Créer Cloud Firestore en mode production.
+5. Publier le contenu du fichier `firestore.rules` dans Firestore > Rules.
+6. Remplacer `export const firebaseConfig = null;` par l'objet public Firebase Web contenant `apiKey`, `authDomain`, `projectId`, `appId` (et éventuellement `legacyOwnerEmail`).
+7. Vérifier avec deux comptes Google différents : chaque profil doit démarrer à zéro ; une validation sur le premier compte ne doit apparaître sur le second.
 
-1. Créer un **dépôt public** GitHub nommé `rundo` (GitHub Pages gratuit pour un dépôt public sur compte personnel). Ajouter tous les fichiers de ce dossier, y compris `.github/workflows/`.
-2. Dans le dépôt, **Settings → Pages → Build and deployment → Source : GitHub Actions**.
-3. Dans Firebase Console : créer un projet, ajouter une application **Web**, activer **Authentication → Sign-in method → Google**, puis **Firestore Database** (mode production).
-4. Remplacer `firebaseConfig = null` dans `firebase-config.js` par la configuration de l'application Web Firebase (`apiKey`, `authDomain`, `projectId`, `appId`, etc.). Ces identifiants **ne sont pas des secrets** ; la protection des données dépend des règles Firestore.
-5. Dans Firestore → Rules, coller `firestore.rules` en remplaçant `REPLACE_WITH_YOUR_GOOGLE_EMAIL` par l'adresse Google autorisée. Publier les règles. Ne pas laisser les règles ouvertes.
-6. Dans Firebase Authentication → Settings → Authorized domains, ajouter `<votre_login>.github.io` (sans protocole ni chemin). Il peut être nécessaire d'utiliser une connexion par redirection si le navigateur bloque la popup.
-7. Le workflow `Publish RUNdo` déploie l'application après chaque push. URL : `https://<votre_login>.github.io/rundo/`.
-8. Dans GitHub Actions, lancer manuellement `Check GPX availability` pour remplir `data/gpx-status.json`, puis laisser le contrôle hebdomadaire agir.
+**Important** : les règles Firestore ne sont pas automatiquement publiées via GitHub Pages. Il faut explicitement les appliquer dans la console Firebase avant d'activer le multi-utilisateur.
 
-## Utilisation
+## Strava : architecture future
+- Association optionnelle du compte Strava après connexion RUNdo.
+- OAuth 2.0 sur un endpoint HTTPS serverless avec gestion sécurisée du secret et des refresh tokens.
+- Stockage privé des jetons inaccessible aux clients Firestore.
+- Reconnaissance GPS proposée et confirmée par l'utilisateur, sans partage par défaut de ses activités.
+- Vérifier les règles API Strava avant l'ouverture à des amis et avant tout classement.
 
-La carte et les parcours sont consultables sans compte. **La sauvegarde des changements est désactivée tant que Firebase n'est pas configuré et que l'utilisateur n'est pas connecté.** Une connexion Google autorisée permet de modifier l'état `terminé` et de le retrouver sur d'autres appareils.
-
-Le bouton de géolocalisation demande la permission du navigateur. Les tuiles de carte OpenStreetMap nécessitent Internet. La PWA ne garantit pas l'accès cartographique totalement hors ligne.
-
-## Contrôle GPX
-
-`scripts/check_gpx.py` vérifie chaque lien en téléchargeant au plus 5 Mo, valide le XML et la présence d'un élément GPX (`trk`, `rte`, `wpt`). Les codes 404/410 sont `unavailable`, les autres échecs (403, 429, réseau, réponse HTML...) sont `unknown`, pas une preuve de suppression du sentier. Le résultat est enregistré dans `data/gpx-status.json`, puis commité par GitHub Actions ; aucun compte Firebase privilégié n'est nécessaire au script. Vérification hebdomadaire (lundi 03:17 UTC), déclenchable à la demande. Le robot peut être limité par les sites tiers.
-
-Un GPX disponible ne prouve pas que le PR est toujours officiellement ouvert ou praticable.
-
-## Reconstruction des données
-
-`python scripts/build_data.py chemin/vers/export.umap` régénère les couches. **Attention :** cette commande réinitialise aussi le fichier de statut GPX. La progression personnelle reste sauvegardée dans Firestore.
-
-## Développement local
-
-Lancer `python -m http.server 8000`, puis ouvrir `http://localhost:8000`. Ne pas ouvrir directement `index.html` depuis le disque : les modules et `fetch()` nécessitent HTTP(S).
-
-## Sécurité et confidentialité
-
-- Les chemins sont dans un dépôt public et leurs tracés sont publics ; la progression utilisateur est stockée dans Firestore, privée selon les règles ci-dessus.
-- Ne jamais commiter de clés de compte de service Firebase ou de jetons GitHub.
-- Prévoir des exports réguliers de Firestore ; l'absence d'export constitue une limite de cette première version.
-- Ne pas oublier de vérifier les quotas/conditions d'utilisation d'OpenStreetMap et de Firebase avant un usage public soutenu.
+## Données & maintenance
+- Les données originales dans `data/routes.geojson` conservent `initialDone` pour l'import historique, mais ce champ n'est plus interprété comme état actuel d'un nouvel utilisateur.
+- La progression de chacun est enregistrée par UID, avec timestamp de modification.
+- Les fichiers GPX sont vérifiés par `scripts/check_gpx.py` et `.github/workflows/check-gpx.yml`.
+- Le basemap est sélectionnable dans l'interface.
+- Ne jamais publier de clés de service Firebase, secrets OAuth Strava ou refresh tokens dans GitHub.
