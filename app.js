@@ -1,5 +1,14 @@
 import {firebaseConfig} from './firebase-config.js';
 const $=id=>document.getElementById(id);
+const STRAVA_START='https://rundo-auth.superwebium.workers.dev/start';
+// Consume and erase sensitive temporary sign-in data from the address bar before
+// loading more application modules or third-party resources.
+let incomingStravaToken=null;
+if(location.hash.startsWith('#strava_token=')){
+ try{incomingStravaToken=decodeURIComponent(location.hash.slice('#strava_token='.length))}
+ finally{history.replaceState(null,'',location.pathname+location.search)}
+}
+
 const state={features:[],byId:new Map(),overrides:{},filter:'all',query:'',maxDistance:999,selected:null,gpx:{},user:null,db:null,auth:null,markers:null,sortAsc:true,previews:new Map(),highlight:null,progressReady:false,profile:null};
 const map=L.map('map',{zoomControl:false,preferCanvas:true}).setView([45.80,1.15],10);
 // Selectable map providers: never cascade failed requests automatically.
@@ -111,6 +120,18 @@ async function initFirebase(){
   state.auth=auth.getAuth(firebaseApp);state.db=db.getFirestore(firebaseApp);state.firebase=db;
   try{await db.enableIndexedDbPersistence(state.db)}catch(e){console.info('Cache Firestore non disponible',e.code)}
   $('login').onclick=()=>auth.signInWithPopup(state.auth,new auth.GoogleAuthProvider()).catch(e=>toast('Connexion impossible : '+e.message));
+  // Enable the Strava button only once the Worker is deployed and configured.
+// Temporarily disabled in this commit; set STRAVA_ENABLED to true after /start is verified.
+const STRAVA_ENABLED=false;
+$('strava-login').disabled=!STRAVA_ENABLED;
+$('strava-login').textContent=STRAVA_ENABLED?'Se connecter avec Strava':'Strava bientôt';
+$('strava-login').onclick=()=>{if(STRAVA_ENABLED)window.location.assign(STRAVA_START)};
+  if(incomingStravaToken){
+   const token=incomingStravaToken;incomingStravaToken=null;
+   try{await auth.signInWithCustomToken(state.auth,token);toast('Connexion Strava réussie')}
+   catch(e){toast('Connexion Strava impossible : '+e.message)}
+  }
+
   $('logout').onclick=()=>auth.signOut(state.auth);
   let unsubscribe=null,authVersion=0;
   auth.onAuthStateChanged(state.auth,async user=>{
