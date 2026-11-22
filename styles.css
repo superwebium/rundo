@@ -58,3 +58,32 @@
 @media (prefers-reduced-motion:reduce){
  .sidebar{transition:none}
 }
+
+
+/* RUNdo Mobile V2.1 — Parcours is a full-height, searchable app screen. */
+.mobile-search-row{display:block}
+#mobile-advanced,#more-routes{display:none}
+@media(max-width:800px){
+ .sidebar{top:56px;bottom:var(--mobile-nav-height);height:auto;max-height:none;min-height:0;border:0;border-radius:0;box-shadow:none;transform:translateX(100%);transition:transform .18s ease,visibility .18s;background:#10272a}
+ .sidebar.mobile-open{transform:translateX(0)}
+ .mobile-drawer-head{height:50px;min-height:50px;border-bottom:1px solid #294347;padding:8px 15px}
+ .mobile-grabber{display:none}
+ .sidebar .hero,.sidebar .stats,.sidebar>div:has(#import-legacy){display:none}
+ .search-panel{padding:11px 14px 8px;flex-shrink:0}
+ .search-panel>label{display:none}
+ .mobile-search-row{display:flex;gap:8px;align-items:center}
+ .mobile-search-row input[type=search]{min-width:0;flex:1;height:44px;font-size:15px}
+ #mobile-advanced{display:block;border:1px solid #446660;color:#d6e8dd;background:#1c3938;border-radius:10px;min-height:44px;padding:0 11px;white-space:nowrap;font-size:12px}
+ #mobile-advanced[aria-expanded=true]{background:#31574c;color:#d1ef85}
+ .chips{margin-top:8px;padding:0 0 3px}
+ .chips button{min-height:35px;padding:7px 12px;font-size:12px}
+ .filters2{display:none;margin-top:8px;border-top:1px solid #35504d;padding-top:9px}
+ .sidebar.advanced-open .filters2{display:flex}
+ .listheading{padding:9px 15px 8px;flex-shrink:0;font-size:12px}
+ .routes{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;padding:0 10px 12px;-webkit-overflow-scrolling:touch}
+ .route{min-height:59px;padding:11px 13px;margin:5px 0}
+ .route .name{font-size:13px}
+ .route .sub{font-size:11px;margin-top:3px}
+ #more-routes:not([hidden]){display:block;flex:none;align-self:stretch;background:#24423c;color:#d1ef85;border:1px solid #4b7163;border-radius:11px;margin:6px 12px 12px;padding:11px;min-height:42px;font-size:12px;font-weight:750}
+}
+@media(prefers-reduced-motion:reduce){@media(max-width:800px){.sidebar{transition:none}}}
