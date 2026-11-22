@@ -86,4 +86,4 @@
  .route .sub{font-size:11px;margin-top:3px}
  #more-routes:not([hidden]){display:block;flex:none;align-self:stretch;background:#24423c;color:#d1ef85;border:1px solid #4b7163;border-radius:11px;margin:6px 12px 12px;padding:11px;min-height:42px;font-size:12px;font-weight:750}
 }
-@media(prefers-reduced-motion:reduce){@media(max-width:800px){.sidebar{transition:none}}}
+@media (max-width:800px) and (prefers-reduced-motion:reduce){.sidebar{transition:none}}
