@@ -2,17 +2,31 @@ import {firebaseConfig} from './firebase-config.js';
 const $=id=>document.getElementById(id);
 const state={features:[],byId:new Map(),overrides:{},filter:'all',query:'',maxDistance:999,selected:null,gpx:{},user:null,db:null,auth:null,markers:null,sortAsc:true,previews:new Map(),highlight:null};
 const map=L.map('map',{zoomControl:false,preferCanvas:true}).setView([45.80,1.15],10);
-// OpenStreetMap raster tiles; the Leaflet CSS must load for tile positioning.
-const baseLayer=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
-  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  maxZoom:19,updateWhenIdle:true,keepBuffer:1
-}).addTo(map);
-let failedTiles=0;
-baseLayer.on('tileload',()=>{failedTiles=0});
-baseLayer.on('tileerror',()=>{if(++failedTiles===4){
-  console.warn('RUNdo: map tiles not loading; inspect requests in Network tab');
-  toast('Certaines tuiles cartographiques ne sont pas accessibles.');
-}});
+// Selectable map providers: never cascade failed requests automatically.
+// Attribution is always visible via Leaflet's built-in attribution control.
+const basemaps={
+ osmfr:{url:'https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png',options:{subdomains:'abc',maxZoom:20,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> — <a href="https://www.openstreetmap.fr/">OSM France</a>'}},
+ hiking:{url:'https://tile.openmaps.fr/openhikingmap/{z}/{x}/{y}.png',options:{maxZoom:18,attribution:'<a href="https://wiki.openstreetmap.org/wiki/OpenHikingMap">&copy; OpenHikingMap</a> <a href="https://openmaps.fr/donate">❤️ Donation</a> <a href="https://www.openstreetmap.org/copyright">&copy; OpenStreetMap</a>'}},
+ topo:{url:'https://tile.openmaps.fr/opentopomap/{z}/{x}/{y}.png',options:{maxZoom:17,attribution:'<a href="https://github.com/sletuffe/OpenTopoMap">&copy; OpenTopoMap-R</a> <a href="https://openmaps.fr/donate">❤️ Donation</a> <a href="https://www.openstreetmap.org/copyright">&copy; OpenStreetMap</a>'}},
+ osm:{url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',options:{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}}
+};
+let activeBase=null;
+function useBasemap(name){
+ const entry=basemaps[name]||basemaps.osmfr;
+ if(activeBase)map.removeLayer(activeBase);
+ const layer=L.tileLayer(entry.url,{...entry.options,updateWhenIdle:true,keepBuffer:1});
+ activeBase=layer.addTo(map).bringToBack();
+ let failures=0;
+ layer.on('tileerror',()=>{if(++failures===4&&activeBase===layer){
+   console.warn('RUNdo: fond de carte indisponible',name);
+   toast('Fond de carte inaccessible. Essayez une autre source avec le sélecteur.');
+ }});
+ const select=$('basemap');if(select)select.value=name;
+ try{localStorage.setItem('rundo-basemap',name)}catch(e){}
+}
+let savedBasemap='osmfr';try{savedBasemap=localStorage.getItem('rundo-basemap')||'osmfr'}catch(e){}
+useBasemap(basemaps[savedBasemap]?savedBasemap:'osmfr');
+$('basemap').addEventListener('change',e=>useBasemap(e.target.value));
 L.control.zoom({position:'bottomright'}).addTo(map);
 // Only invalidate after the responsive layout has settled. Avoid a ResizeObserver
 // feedback loop and unnecessary tile cancellation during initial loading.
