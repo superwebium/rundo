@@ -2,22 +2,16 @@ import {firebaseConfig} from './firebase-config.js';
 const $=id=>document.getElementById(id);
 const state={features:[],byId:new Map(),overrides:{},filter:'all',query:'',maxDistance:999,selected:null,gpx:{},user:null,db:null,auth:null,markers:null,sortAsc:true,previews:new Map(),highlight:null};
 const map=L.map('map',{zoomControl:false,preferCanvas:true}).setView([45.80,1.15],10);
-// Use the official OSM raster endpoint (single hostname); fall back if tile errors occur.
-const baseLayer=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
-  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  maxZoom:19,updateWhenIdle:true,keepBuffer:2
+// CARTO basemap: single provider, no automatic fallback that can trigger
+// another storm of failing tile requests. Designed for a small personal web app.
+const baseLayer=L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',{
+ subdomains:'abcd',maxZoom:19,keepBuffer:1,updateWhenIdle:true,
+ attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
 }).addTo(map);
-let tileErrors=0, fallbackEnabled=false;
-baseLayer.on('tileload',()=>{tileErrors=0});
+let failedTiles=0;
+baseLayer.on('tileload',()=>{failedTiles=0});
 baseLayer.on('tileerror',()=>{
-  if(fallbackEnabled||++tileErrors<3)return;
-  fallbackEnabled=true;
-  console.warn('RUNdo: OSM tile errors; switching to backup topographic basemap');
-  map.removeLayer(baseLayer);
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',{
-    attribution:'Tiles &copy; Esri and its data providers',maxZoom:18,updateWhenIdle:true,keepBuffer:2
-  }).addTo(map).bringToBack();
-  toast('Fond cartographique de secours activé');
+ if(++failedTiles===4){console.warn('RUNdo: basemap tiles refused/blocked; inspect Network tab for HTTP status');toast('Fond de carte inaccessible : vérifier les requêtes réseau (F12).')}
 });
 L.control.zoom({position:'bottomright'}).addTo(map);
 // Only invalidate after the responsive layout has settled. Avoid a ResizeObserver
